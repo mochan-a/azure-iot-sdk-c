@@ -112,6 +112,8 @@ static bool dequeue_message_and_fire_callback(MESSAGE_QUEUE_HANDLE message_queue
 
 			break;
 		}
+		
+		list_item = singlylinkedlist_get_next_item(list_item);
 	}
 
 	return (list_item != NULL);
@@ -225,11 +227,16 @@ static void process_pending_messages(MESSAGE_QUEUE_HANDLE message_queue)
 	{
 		MESSAGE_QUEUE_ITEM* mq_item = (MESSAGE_QUEUE_ITEM*)singlylinkedlist_item_get_value(list_item);
 
-		if (singlylinkedlist_remove(message_queue->pending, list_item) != 0)
+		if (mq_item == NULL)
+		{
+			LogError("internal error, failed to retrieve list node value");
+			break;
+		}
+		else if (singlylinkedlist_remove(message_queue->pending, list_item) != 0)
 		{
 			LogError("failed moving message out of pending list (%p)", mq_item->message);
 			// Codes_SRS_MESSAGE_QUEUE_09_042: [If any failures occur, `message_queue->on_message_processing_completed_callback` shall be invoked with MESSAGE_QUEUE_ERROR and `mq_item` freed]
-			on_message_processing_completed_callback(mq_item->message, MESSAGE_QUEUE_ERROR, NULL, (void*)mq_item);
+			on_message_processing_completed_callback(mq_item->message, MESSAGE_QUEUE_ERROR, NULL, (void*)message_queue);
 			break; // Trying to avoid an infinite loop
 		}
 		// Codes_SRS_MESSAGE_QUEUE_09_040: [`mq_item->processing_start_time` shall be set using get_time()]
@@ -238,19 +245,19 @@ static void process_pending_messages(MESSAGE_QUEUE_HANDLE message_queue)
 			// Codes_SRS_MESSAGE_QUEUE_09_041: [If get_time() fails, `mq_item` shall be removed from `message_queue->in_progress`]
 			LogError("failed setting message processing_start_time (%p)", mq_item->message);
 			// Codes_SRS_MESSAGE_QUEUE_09_042: [If any failures occur, `message_queue->on_message_processing_completed_callback` shall be invoked with MESSAGE_QUEUE_ERROR and `mq_item` freed]
-			on_message_processing_completed_callback(mq_item->message, MESSAGE_QUEUE_ERROR, NULL, (void*)mq_item);
+			on_message_processing_completed_callback(mq_item->message, MESSAGE_QUEUE_ERROR, NULL, (void*)message_queue);
 		}
 		// Codes_SRS_MESSAGE_QUEUE_09_039: [Each `mq_item` in `message_queue->pending` shall be moved to `message_queue->in_progress`]
-		else if (singlylinkedlist_add(message_queue->in_progress, (const void*)mq_item) != 0)
+		else if (singlylinkedlist_add(message_queue->in_progress, (const void*)mq_item) == NULL)
 		{
 			LogError("failed moving message to in-progress list (%p)", mq_item->message);
 			// Codes_SRS_MESSAGE_QUEUE_09_042: [If any failures occur, `message_queue->on_message_processing_completed_callback` shall be invoked with MESSAGE_QUEUE_ERROR and `mq_item` freed]
-			on_message_processing_completed_callback(mq_item->message, MESSAGE_QUEUE_ERROR, NULL, (void*)mq_item);
+			on_message_processing_completed_callback(mq_item->message, MESSAGE_QUEUE_ERROR, NULL, (void*)message_queue);
 		}
 		else
 		{
 			// Codes_SRS_MESSAGE_QUEUE_09_043: [If no failures occur, `message_queue->on_process_message_callback` shall be invoked passing `mq_item->message` and `on_message_processing_completed_callback`]
-			message_queue->on_process_message_callback(mq_item->message, on_message_processing_completed_callback, (void*)mq_item);
+			message_queue->on_process_message_callback(mq_item->message, on_message_processing_completed_callback, (void*)message_queue);
 		}
 	}
 }
